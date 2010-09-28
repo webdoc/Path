@@ -1,0 +1,930 @@
+/*** pathIntersection ***/
+
+function pathUnion(path1,path2){
+	this.paths = [path1,path2];	
+	/*[[indexPath1,indexPath2,[ [{x:X,y:Y}, t1,t2],...]]]*/
+	var res = this.getAllInsersectionPoints();
+	this.points = res;
+	this.path = [];
+	if(!res.length){
+		this.path = this.getPathsUnion();
+	}
+	else{
+		this.start = this.getStartPoint();
+		this.getOverallPath();
+		this.path = this.getPathFromPoints(this.path);
+	}
+}
+/*gets the path union (non intersection case)*/
+pathUnion.prototype.getPathsUnion = function(){
+	var limits = [];
+	limits[0] = this.getPathLimits(0);
+	limits[1] = this.getPathLimits(1);
+	var mid0 = limits[0][0].lerp(limits[0][1],0.5);
+	var res1 = this.isPointInside(mid0,limits[1]);
+	if(res1) return this.paths[1];
+	var mid1 = limits[1][0].lerp(limits[1][1],0.5);
+	var res2 = this.isPointInside(mid1,limits[0]);
+	if(res2) return this.paths[0];
+	return this.paths[0].concat(this.paths[1]);
+}
+
+/*checks if the point is inside the path*/
+pathUnion.prototype.isPointInside = function(p,limits){
+	return (p.x<limits[1].x&&p.x>limits[0].x&&p.y<limits[1].y&&p.y>limits[0].y);
+}
+pathUnion.prototype.getPathLimits = function(pi){
+	var minP = new Point(Infinity,Infinity);
+	var maxP = new Point(0,0);
+	var bounds = this.bounds[pi];
+	for(var i =0; i < bounds.length;i++){
+		var points = this.getPoints(bounds[i]);
+		for(var j = 0; j < points.length; j++){
+			var minP = minP.min(points[j]);
+			var maxP = maxP.max(points[j]);
+		}
+	}
+	return [minP,maxP];
+}
+/**gets overall path
+	@param pi - path index
+	@param li - line index
+	@param point - point of intersection
+**/
+pathUnion.prototype.getOverallPath = function(pi,li,point){
+	if(!arguments.length){
+		var pi = this.start[0];
+		var li = this.start[1];
+		this.startPoint = [this.bounds[pi][li][0],this.bounds[pi][li][1]];
+
+	}
+	var i = li;
+	
+	var bounds = this.bounds[pi];
+	
+	var length = bounds[i].length;
+	if((pi==this.start[0])&&(i==(bounds.length-1))&&(bounds[i][length-2]==this.startPoint[0])&&(bounds[i][length-1]==this.startPoint[1])){
+		this.path.push(this.getPoints(bounds[i]));
+		return null;
+	}
+	var p =  this.getLineIntersectionPoints(pi,i);
+	/*if the line needs being splitted*/
+	if(point){
+		var curve = this.getSplittedCurveAfter(pi,i,point);
+		this.path.push(curve[0]);
+		if(curve[1] == (p.length-1)) i = this.getNextIndex(pi,i,curve[0][3]);
+		else{
+			return this.getOverallPath(1-pi,p[curve[1]+1].line2Index,p[curve[1]+1].point);
+		}
+	}
+	if(!this.processed_points)
+	   	this.processed_points = {};
+	if(!this.processed_points[pi])
+		this.processed_points[pi] = {};
+	
+	
+	var p =  this.getLineIntersectionPoints(pi,i);
+	
+	if(!p.length){
+		var pI = this.getPoints(bounds[i]);
+	   	this.path.push(pI);
+	  	i = this.getNextIndex(pi,i,pI[pI.length-1]);
+	    return this.getOverallPath(pi,i);
+	}
+	else{
+		
+		if(!this.processed_points[pi][li])
+			this.processed_points[pi][li] = 0;
+		var inters_point = this.processed_points[pi][i];
+		if(!p[inters_point]) return;
+		var curve = this.getSplittedCurveBefore(pi,i,p[inters_point].point);
+	    this.processed_points[pi][i]++;
+	   	this.path.push(curve[0]);
+	   	return this.getOverallPath(1-pi,p[inters_point].line2Index,p[inters_point].point);
+	}
+	return null;
+}
+
+/** gets the index for the next point in overall path
+    @param pi - path index
+	@param i - line index
+	@param point - the last point of a line
+	returns 
+**/
+pathUnion.prototype.getNextIndex = function(pi,i,point){
+	var path = this.bounds[pi];
+	for(var j=0; j<path.length;j++){
+		var points = this.getPoints(path[j]);
+		if(points.length==1) continue;
+		if(points[0].isEqual(point)) return j;
+	}
+}
+/**splits the curve by point and returns the 1st sub curve
+    @param pi - path index
+	@param i - line index
+	@param point - splitting point
+	returns array:
+		0: curve [p0,p1,p2,p3]
+		1: the index of the point
+**/
+pathUnion.prototype.getSplittedCurveBefore = function(pi,i,point){
+	var curves = this.getAllSubCurves(pi,i);
+	var p =  this.getLineIntersectionPoints(pi,i);
+	for(var j = 0; j<p.length;j++)
+		if(p[j].point == point) return [curves[j],j];
+}
+/**splits the curve by point and returns the 2st sub curve
+    @param pi - path index
+	@param i - line index
+	@param point - splitting point
+	returns array:
+		0: curve [p0,p1,p2,p3]
+		1: the index of the point
+**/
+pathUnion.prototype.getSplittedCurveAfter = function(pi,i,point){
+	var curves = this.getAllSubCurves(pi,i);
+	var p =  this.getLineIntersectionPoints(pi,i);
+	for(var j = 0; j<p.length;j++)
+		if(p[j].point == point) return [curves[j+1],j];
+}
+/** gets the array of all sub curves of a curve
+    @param pi - path index
+	@param i - line index
+	returns the array [[p00,p01,p02,p03],[p10,p11,p12,p13],..]
+**/
+pathUnion.prototype.getAllSubCurves = function(pi,i){
+	var p =  this.getLineIntersectionPoints(pi,i);
+	if(!p.length) return [this.getPoints(this.bounds[pi][i])];
+	var curves = [];
+	var res, temp;
+	for(var j = 0; j<p.length;j++){
+		if(!j)
+			res = this.splitCurve(this.getPoints(this.bounds[pi][i]),p[0].point);
+		else 
+			res = this.splitCurve(temp,p[j].point);
+		temp = res[1];
+		curves[j] = res[0];
+		if(j==(p.length-1)) curves[p.length] = res[1];
+	}
+	return curves
+}
+/**get path the [{type:canvasMethod,data:[param0,param1,...]},...] format
+   @param points - array of path points [[param00,param01,...],...]
+   returns array
+**/
+pathUnion.prototype.getPathFromPoints= function(points){
+	var path = [];
+	if(points.length) path.push({type:"moveTo",data:[points[0][0].x,points[0][0].y]});
+	for(var i = 0; i < points.length;i++){
+		var p = points[i];
+		if(p.length==1){
+			path.push({type:"moveTo",data:[p[0].x,p[0].y]});
+		}
+		else if(p.length==2)
+			path.push({type:"lineTo",data:[p[1].x,p[1].y]});
+		else if(p.length==4)
+			path.push({type:"bezierCurveTo",data:[p[1].x,p[1].y,p[2].x,p[2].y,p[3].x,p[3].y]});
+			
+	}
+	return path;
+}
+
+/** gets points of intersection for a certain line
+    @param pathIndex - index of a path (0 or 1)
+	@param lineIndex - index of the line in a path
+	returns sorted array (by t) of objects {}:
+	   t: the t of a point,
+	   line2Index: index of the line in path 2, 
+	   point: {x:X,y:Y}
+**/
+pathUnion.prototype.getLineIntersectionPoints = function(pathIndex,lineIndex){
+	var points = [];
+	var ip = this.points;
+	for(var j = 0; j< ip.length;j++){
+		if(ip[j][pathIndex]&&ip[j][pathIndex] == lineIndex){
+			for(var k = 0; k< ip[j][2].length;k++){
+				points.push({t:ip[j][2][k][1+pathIndex],line2Index:ip[j][1-pathIndex],point:ip[j][2][k][0]});
+			}
+		}
+	}
+	points.sort(function(a,b){return a.t > b.t ? 1 : -1; });
+	return points;
+}
+pathUnion.prototype.getStartPoint = function(i,ic,jc){
+	if(!arguments.length){
+		var i=0;
+		var ic=1;
+		var jc=1;
+	}
+	var spath = this.bounds[i][ic];
+	var path2 = this.bounds[1-i];
+	var points = []
+	for(var k=0;k< path2.length;k++){
+		var res = this.intersectLinePolygon(new Point(spath[0],spath[1]),new Point(spath[0]+1,spath[1]+1),path2[k],1)
+		if(res)
+			points.concat(res);
+	}
+	if(points.length&&points.length%2)
+		return this.getStartPoint(1-i,jc,ic++);
+	return [i,ic];
+}
+/** splits the bezier curve on 2 curves
+	@param c - the array of 4 control points [{x:x0,y:y0},...,{x:x3,y:y3}]
+	@param p - the point of intersection {x:X,y:Y}
+	returns array of control points for 2 subcurves [[{x:x01,y:y01},...],[{x:x02,y:y02},...]]
+**/
+pathUnion.prototype.splitCurve = function(c,p){
+	var t = this.getT(c[0],c[1],c[2],c[3],p);
+	var sub1 = [];
+	var sub2 = [];
+	sub1[0] = c[0];
+	sub1[1] = this.splitLine(c[0],c[1],t);
+	var q = this.splitLine(c[1],c[2],t);
+	sub1[2] = this.splitLine(sub1[1],q,t);
+	sub1[3] = p;
+	sub2[0] = p;
+	sub2[2] = this.splitLine(c[2],c[3],t);
+	sub2[1] = this.splitLine(q,sub2[2],t);
+	sub2[3] = c[3];
+	return [sub1,sub2];
+}
+/**gets t for intersection point
+	@param p0 - the 1st control point 
+	@param p1 - the 2nd control point 
+	@param p2 - the 3rd control point 
+	@param p3 - the 4th control point 
+	@param p - the point of intesection 
+	returns t
+**/
+pathUnion.prototype.getT = function(p0,p1,p2,p3,p){
+	var ax = 3*(p1.x-p0.x)+3*(p3.x-p2.x)-2*(p3.x-p0.x);
+	var ay = 3*(p1.y-p0.y)+3*(p3.y-p2.y)-2*(p3.y-p0.y);
+	var bx = -6*(p1.x-p0.x)-3*(p3.x-p2.x)+3*(p3.x-p0.x);
+	var by = -6*(p1.y-p0.y)-3*(p3.x-p2.y)+3*(p3.x-p0.y);
+	var cx = 3*(p1.x-p0.x);
+	var cy = 3*(p1.y-p0.y);
+	var d = ay/ax;
+	/*parameters of quadratic equation*/	
+	var a = d*bx-by;
+	var b = d*cx-cy;
+	var c = d*p0.x-d*p.x-p0.y+p.y;
+	
+	var t1 = 2*c/(-b-Math.sqrt(b*b-4*a*c));
+	var t2 = 2*c/(-b+Math.sqrt(b*b-4*a*c));
+	var t = [];
+	if((t1<=1)&&(t1>=0)) t.push(t1);
+	if((t2<=1)&&(t2>=0)) t.push(t2);
+	if(t.length) return Math.min(t[0],t[1]||Infinity);	
+}
+/** splits the line on 2 sub lines
+ 	@param a - line start {x:X0,y:Y0}
+	@param b - line end {x:X1,y:Y1}
+	@param t - t of intersection (0<=t<=1)
+	returns the point of intersection {x:X,y:Y}
+**/
+pathUnion.prototype.splitLine = function(a,b,t){
+	return a.add(b.subtract(a).multiply(t));
+}
+/*sets paths bounds*/
+pathUnion.prototype.setBounds = function(){
+	if(!this.bounds){
+		this.bounds = [];
+		this.bounds[0] = this.getBounds(this.paths[0]);
+		this.bounds[1] = this.getBounds(this.paths[1]);
+	}
+}
+/** gets all points of intersction for two paths
+	returns the array of:
+		0: the index of the line in path 1
+		1: the index of the line in path 2
+		3: [{x:X,y:Y}, t1,t2]
+**/
+pathUnion.prototype.getAllInsersectionPoints = function(){
+	var path1 = this.paths[0];
+	var path2 = this.paths[1];
+	var arr = this.getInsertsectedPoligons(path1,path2);
+	this.setBounds();
+	var points = [];
+	for(var l = 0; l < arr.length; l++){
+		var i = arr[l][0];
+		var j = arr[l][1];
+		var res = this.intersectLines(path1[i].type,path2[j].type,this.bounds[0][i],this.bounds[1][j]);
+		if(res&&res.length)
+			points.push([i,j,res]);
+	}
+	return points;
+}
+/** returns "bounds" interpretation for a path:
+		moveTo[x,y] => [x,y]
+		lineTo[x2,y2] => [x1,y1,x2,y2]
+		bezierCurveTo[x2,y2,x3,y3,x4,y4] =>[x1,y1,x2,y2,x3,y3,x4,y4] 
+**/
+pathUnion.prototype.getBounds = function(path){
+	var bounds = [];
+	if(!path) return;
+	for(var i =0 ; i < path.length; i++){
+		if(!path[i].data) continue;
+		if(path[i].type == "moveTo"){
+			bounds[i] = path[i].data;
+		}
+		else if(i!=0){
+			bounds[i] = [];
+			bounds[i][0] = bounds[i-1][bounds[i-1].length-2];
+			bounds[i][1] = bounds[i-1][bounds[i-1].length-1];
+			bounds[i] = bounds[i].concat(path[i].data);
+		}
+	}
+	return bounds;
+}
+/**gets array of possible intersections**/
+pathUnion.prototype.getInsertsectedPoligons = function(path1,path2){
+	if(!arguments.length){
+		var path1 = this.paths[0];
+		var path2 = this.paths[1];
+	}
+	this.bounds = [];
+	this.bounds[0] = this.getBounds(path1);
+	this.bounds[1] = this.getBounds(path2);
+	var inter = [];
+	for(var i= 0; i < path1.length; i++){
+		for(var j=0; j < path2.length; j++){
+			if(path1[i].type&&path2[j].type){
+				var res  = this.intersectBounds(path1[i].type,path2[j].type,this.bounds[0][i],this.bounds[1][j]);
+				if(res) inter.push([i,j]);
+			}
+		}
+	}
+	return inter;
+}
+/**gets array of objects class Point from values array
+   @param values - array [a0,a1,...]
+   return array of Point objects [p0,p1,...] where p0.x = a0 and p0.y = a1
+**/
+pathUnion.prototype.getPoints = function(values){
+	var pp = [];
+	for(var i = 0; i < values.length; i +=2){
+		pp.push(new Point(values[i],values[i+1]));
+	}
+	return pp;
+}
+
+pathUnion.prototype.intersectBounds = function(method1,method2,bounds1,bounds2){
+	var p1 = this.getPoints(bounds1);
+	var p2 = this.getPoints(bounds2);
+	var res;
+	if(method1 == "bezierCurveTo"){
+	    if(method2 == "lineTo")
+			res = this.intersectLinePolygon(p2[0],p2[1],[p1[0],p1[1],p1[2],p1[3]]);
+		else if(method2 == "bezierCurveTo")
+			res = this.intersectPolygonPolygon([p1[0],p1[1],p1[2],p1[3]],[p2[0],p2[1],p2[2],p2[3]]);
+	}
+	else if(method1 == "lineTo"){
+		if(method2 == "lineTo")
+			res = this.intersectLineLine(p1[0],p1[1],p2[0],p2[1]);
+		else  if(path2[j].type == "bezierCurveTo")
+			res = this.intersectLinePolygon(p1[0],p1[1],[p2[0],p2[1],p2[2],p2[3]]);
+	}							
+	return res;
+}
+pathUnion.prototype.intersectLines = function(method1,method2,bounds1,bounds2){
+	var p1 = this.getPoints(bounds1);
+	var p2 = this.getPoints(bounds2);
+	var res;
+	if(method1 == "bezierCurveTo"){
+	    if(method2 == "lineTo")
+			res = this.intersectLineCurve(p2[0],p2[1],p1[0],p1[1],p1[2],p1[3]);
+		else if(method2 == "bezierCurveTo"){
+			res = this.intersectCurveCurve(p1[0],p1[1],p1[2],p1[3],p2[0],p2[1],p2[2],p2[3]);
+		}
+	}
+	else if(method1 == "lineTo"){
+		if(method2 == "lineTo")
+			res = this.intersectLineLine(p1[0],p1[1],p2[0],p2[1]);
+		else  if(path2[j].type == "bezierCurveTo")
+			res = this.intersectLineCurve(p1[0],p1[1],p2[0],p2[1],p2[2],p2[3]);
+	}							
+	return res;
+}
+/**gets the points of intersection for two lines**/
+pathUnion.prototype.intersectLineLine = function(a1, a2, b1, b2, infinite) {
+	var ca = (b2.x - b1.x) * (a1.y - b1.y) - (b2.y - b1.y) * (a1.x - b1.x);
+    var cb = (a2.x - a1.x) * (a1.y - b1.y) - (a2.y - a1.y) * (a1.x - b1.x);
+    var d = (b2.y - b1.y) * (a2.x - a1.x) - (b2.x - b1.x) * (a2.y - a1.y);
+	if ( d != 0 ) {
+		var ua = ca / d;
+		var ub = cb / d;
+        if(infinite){
+			var p = new Point(a1.x + ua * (a2.x - a1.x),a1.y + ua * (a2.y - a1.y));
+			if(p.x>a1.x&&p.y>a1.y)
+				return p;
+		}
+		else if (0 <= ua && ua <= 1 && 0 <= ub && ub <= 1 ) {
+        	return new Point(a1.x + ua * (a2.x - a1.x),a1.y + ua * (a2.y - a1.y));
+         }
+	} 
+	return null;
+};
+pathUnion.prototype.intersectLinePolygon = function(a1, a2, Points,infinite) {
+	var pp = [];
+	for ( var i = 0; i < Points.length; i++ ) {
+       	var res = this.intersectLineLine(a1, a2, Points[i], Points[(i+1) % Points.length],infinite);
+    	if(res)
+			pp.push(res);
+    }
+	return (pp.length?pp:null);
+};
+pathUnion.prototype.intersectPolygonPolygon = function(Points1, Points2) {
+    var pp = [];
+    for ( var i = 0; i < Points1.length; i++ ) {
+    	var res = this.intersectLinePolygon(Points1[i], Points1[(i+1) % Points1.length], Points2);
+	   	if(res)
+			pp.push(res);
+    }
+	return (pp.length?pp:null);
+};
+pathUnion.prototype.getRoots=function(a0,a1,a2,a3){
+	var results=new Array();
+	var c3=a0;
+	var c2=a1/c3;
+	var c1=a2/c3;
+	var c0=a3/c3;
+	var a = (3*c1-c2*c2)/3;
+	var b = (2*c2*c2*c2-9*c1*c2+27*c0)/27;
+	var offset = c2/3;
+	var discrim = b*b/4 + a*a*a/27;
+	var halfB = b/2;
+	var t = 1e-6;
+	if(Math.abs(discrim) <= t)
+		disrim=0;
+	if(discrim>0){
+		var e=Math.sqrt(discrim);
+		var tmp;
+		var root;
+		tmp=-halfB+e;
+		if(tmp>=0)root=Math.pow(tmp,1/3);
+		else root=-Math.pow(-tmp,1/3);
+		tmp=-halfB-e;
+		if(tmp>=0)root+=Math.pow(tmp,1/3);
+		else root-=Math.pow(-tmp,1/3);
+		results.push(root-offset);
+	}
+	else if(discrim<0){
+		var distance=Math.sqrt(-a/3);
+		var angle=Math.atan2(Math.sqrt(-discrim),-halfB)/3;
+		var cos=Math.cos(angle);
+		var sin=Math.sin(angle);var sqrt3=Math.sqrt(3);
+		results.push(2*distance*cos-offset);
+		results.push(-distance*(cos+sqrt3*sin)-offset);
+		results.push(-distance*(cos-sqrt3*sin)-offset);
+	}
+	else{
+		var tmp;if(halfB>=0)tmp=-Math.pow(halfB,1/3);else tmp=Math.pow(-halfB,1/3);results.push(2*tmp-offset);results.push(-tmp-offset);
+	}
+	return results;
+};
+/*gets points of intersection line with bezier curve (the approach was taken from http://www.kevlindev.com/)*/
+pathUnion.prototype.intersectLineCurve = function(a1, a2, p1, p2, p3, p4) {
+    var a, b, c, d;      
+    var c3, c2, c1, c0;  
+	var cl;               
+    var n;                
+    var min = a1.min(a2); 
+    var max = a1.max(a2); 
+	
+    var result = [];
+    a = p1.multiply(-1);
+    b = p2.multiply(3);
+    c = p3.multiply(-3);
+    d = a.add(b.add(c.add(p4)));
+    c3 = new Point(d.x, d.y);
+
+    a = p1.multiply(3);
+    b = p2.multiply(-6);
+    c = p3.multiply(3);
+    d = a.add(b.add(c));
+    c2 = new Point(d.x, d.y);
+
+    a = p1.multiply(-3);
+    b = p2.multiply(3);
+    c = a.add(b);
+    c1 = new Point(c.x, c.y);
+
+    c0 = new Point(p1.x, p1.y);
+	
+    n = new Point(a1.y - a2.y, a2.x - a1.x);
+    
+    cl = a1.x*a2.y - a2.x*a1.y;
+    
+	roots = this.getRoots(
+        n.dot(c3),
+        n.dot(c2),
+        n.dot(c1),
+        n.dot(c0) + cl
+    );
+
+    for ( var i = 0; i < roots.length; i++ ) {
+        var t = roots[i]; 
+		
+        if ( 0 <= t && t <= 1 ) {
+            var p5 = p1.lerp(p2, t);
+            var p6 = p2.lerp(p3, t);
+            var p7 = p3.lerp(p4, t);
+            var p8 = p5.lerp(p6, t);
+            var p9 = p6.lerp(p7, t);
+			
+            var p10 = p8.lerp(p9, t);
+
+            if ( a1.x == a2.x ) {
+                if ( min.y <= p10.y && p10.y <= max.y ) {
+                    result.push( [p10,t]);
+                }
+            } else if ( a1.y == a2.y ) {
+                if ( min.x <= p10.x && p10.x <= max.x ) {
+                    result.push([p10,t]);
+                }
+            } else if ( p10.isGE(min) && p10.isLE(max) ) {
+               result.push([p10,t]);
+            }
+        }
+    }
+
+    return result;
+};
+/*gets points of intersection bezier curve with bezier curve (the approach was taken from http://www.kevlindev.com/)*/
+pathUnion.prototype.intersectCurveCurve=function(a1,a2,a3,a4,b1,b2,b3,b4){
+    var a, b, c, d;         
+    var c13, c12, c11, c10; 
+    var c23, c22, c21, c20; 
+    var result = [];
+
+    a = a1.multiply(-1);
+    b = a2.multiply(3);
+    c = a3.multiply(-3);
+    d = a.add(b.add(c.add(a4)));
+    c13 = new Point(d.x, d.y);
+
+    a = a1.multiply(3);
+    b = a2.multiply(-6);
+    c = a3.multiply(3);
+    d = a.add(b.add(c));
+    c12 = new Point(d.x, d.y);
+
+    a = a1.multiply(-3);
+    b = a2.multiply(3);
+    c = a.add(b);
+    c11 = new Point(c.x, c.y);
+
+    c10 = new Point(a1.x, a1.y);
+
+    a = b1.multiply(-1);
+    b = b2.multiply(3);
+    c = b3.multiply(-3);
+    d = a.add(b.add(c.add(b4)));
+    c23 = new Point(d.x, d.y);
+
+    a = b1.multiply(3);
+    b = b2.multiply(-6);
+    c = b3.multiply(3);
+    d = a.add(b.add(c));
+    c22 = new Point(d.x, d.y);
+
+    a = b1.multiply(-3);
+    b = b2.multiply(3);
+    c = a.add(b);
+    c21 = new Point(c.x, c.y);
+
+    c20 = new Point(b1.x, b1.y);
+
+    var c10x2 = c10.x*c10.x;
+    var c10x3 = c10.x*c10.x*c10.x;
+    var c10y2 = c10.y*c10.y;
+    var c10y3 = c10.y*c10.y*c10.y;
+    var c11x2 = c11.x*c11.x;
+    var c11x3 = c11.x*c11.x*c11.x;
+    var c11y2 = c11.y*c11.y;
+    var c11y3 = c11.y*c11.y*c11.y;
+    var c12x2 = c12.x*c12.x;
+    var c12x3 = c12.x*c12.x*c12.x;
+    var c12y2 = c12.y*c12.y;
+    var c12y3 = c12.y*c12.y*c12.y;
+    var c13x2 = c13.x*c13.x;
+    var c13x3 = c13.x*c13.x*c13.x;
+    var c13y2 = c13.y*c13.y;
+    var c13y3 = c13.y*c13.y*c13.y;
+    var c20x2 = c20.x*c20.x;
+    var c20x3 = c20.x*c20.x*c20.x;
+    var c20y2 = c20.y*c20.y;
+    var c20y3 = c20.y*c20.y*c20.y;
+    var c21x2 = c21.x*c21.x;
+    var c21x3 = c21.x*c21.x*c21.x;
+    var c21y2 = c21.y*c21.y;
+    var c22x2 = c22.x*c22.x;
+    var c22x3 = c22.x*c22.x*c22.x;
+    var c22y2 = c22.y*c22.y;
+    var c23x2 = c23.x*c23.x;
+    var c23x3 = c23.x*c23.x*c23.x;
+    var c23y2 = c23.y*c23.y;
+    var c23y3 = c23.y*c23.y*c23.y;
+    var poly = new Polynomial(
+        -c13x3*c23y3 + c13y3*c23x3 - 3*c13.x*c13y2*c23x2*c23.y +
+            3*c13x2*c13.y*c23.x*c23y2,
+        -6*c13.x*c22.x*c13y2*c23.x*c23.y + 6*c13x2*c13.y*c22.y*c23.x*c23.y + 3*c22.x*c13y3*c23x2 -
+            3*c13x3*c22.y*c23y2 - 3*c13.x*c13y2*c22.y*c23x2 + 3*c13x2*c22.x*c13.y*c23y2,
+        -6*c21.x*c13.x*c13y2*c23.x*c23.y - 6*c13.x*c22.x*c13y2*c22.y*c23.x + 6*c13x2*c22.x*c13.y*c22.y*c23.y +
+            3*c21.x*c13y3*c23x2 + 3*c22x2*c13y3*c23.x + 3*c21.x*c13x2*c13.y*c23y2 - 3*c13.x*c21.y*c13y2*c23x2 -
+            3*c13.x*c22x2*c13y2*c23.y + c13x2*c13.y*c23.x*(6*c21.y*c23.y + 3*c22y2) + c13x3*(-c21.y*c23y2 -
+            2*c22y2*c23.y - c23.y*(2*c21.y*c23.y + c22y2)),
+        c11.x*c12.y*c13.x*c13.y*c23.x*c23.y - c11.y*c12.x*c13.x*c13.y*c23.x*c23.y + 6*c21.x*c22.x*c13y3*c23.x +
+            3*c11.x*c12.x*c13.x*c13.y*c23y2 + 6*c10.x*c13.x*c13y2*c23.x*c23.y - 3*c11.x*c12.x*c13y2*c23.x*c23.y -
+            3*c11.y*c12.y*c13.x*c13.y*c23x2 - 6*c10.y*c13x2*c13.y*c23.x*c23.y - 6*c20.x*c13.x*c13y2*c23.x*c23.y +
+            3*c11.y*c12.y*c13x2*c23.x*c23.y - 2*c12.x*c12y2*c13.x*c23.x*c23.y - 6*c21.x*c13.x*c22.x*c13y2*c23.y -
+            6*c21.x*c13.x*c13y2*c22.y*c23.x - 6*c13.x*c21.y*c22.x*c13y2*c23.x + 6*c21.x*c13x2*c13.y*c22.y*c23.y +
+            2*c12x2*c12.y*c13.y*c23.x*c23.y + c22x3*c13y3 - 3*c10.x*c13y3*c23x2 + 3*c10.y*c13x3*c23y2 +
+            3*c20.x*c13y3*c23x2 + c12y3*c13.x*c23x2 - c12x3*c13.y*c23y2 - 3*c10.x*c13x2*c13.y*c23y2 +
+            3*c10.y*c13.x*c13y2*c23x2 - 2*c11.x*c12.y*c13x2*c23y2 + c11.x*c12.y*c13y2*c23x2 - c11.y*c12.x*c13x2*c23y2 +
+            2*c11.y*c12.x*c13y2*c23x2 + 3*c20.x*c13x2*c13.y*c23y2 - c12.x*c12y2*c13.y*c23x2 -
+            3*c20.y*c13.x*c13y2*c23x2 + c12x2*c12.y*c13.x*c23y2 - 3*c13.x*c22x2*c13y2*c22.y +
+            c13x2*c13.y*c23.x*(6*c20.y*c23.y + 6*c21.y*c22.y) + c13x2*c22.x*c13.y*(6*c21.y*c23.y + 3*c22y2) +
+            c13x3*(-2*c21.y*c22.y*c23.y - c20.y*c23y2 - c22.y*(2*c21.y*c23.y + c22y2) - c23.y*(2*c20.y*c23.y + 2*c21.y*c22.y)),
+        6*c11.x*c12.x*c13.x*c13.y*c22.y*c23.y + c11.x*c12.y*c13.x*c22.x*c13.y*c23.y + c11.x*c12.y*c13.x*c13.y*c22.y*c23.x -
+            c11.y*c12.x*c13.x*c22.x*c13.y*c23.y - c11.y*c12.x*c13.x*c13.y*c22.y*c23.x - 6*c11.y*c12.y*c13.x*c22.x*c13.y*c23.x -
+            6*c10.x*c22.x*c13y3*c23.x + 6*c20.x*c22.x*c13y3*c23.x + 6*c10.y*c13x3*c22.y*c23.y + 2*c12y3*c13.x*c22.x*c23.x -
+            2*c12x3*c13.y*c22.y*c23.y + 6*c10.x*c13.x*c22.x*c13y2*c23.y + 6*c10.x*c13.x*c13y2*c22.y*c23.x +
+            6*c10.y*c13.x*c22.x*c13y2*c23.x - 3*c11.x*c12.x*c22.x*c13y2*c23.y - 3*c11.x*c12.x*c13y2*c22.y*c23.x +
+            2*c11.x*c12.y*c22.x*c13y2*c23.x + 4*c11.y*c12.x*c22.x*c13y2*c23.x - 6*c10.x*c13x2*c13.y*c22.y*c23.y -
+            6*c10.y*c13x2*c22.x*c13.y*c23.y - 6*c10.y*c13x2*c13.y*c22.y*c23.x - 4*c11.x*c12.y*c13x2*c22.y*c23.y -
+            6*c20.x*c13.x*c22.x*c13y2*c23.y - 6*c20.x*c13.x*c13y2*c22.y*c23.x - 2*c11.y*c12.x*c13x2*c22.y*c23.y +
+            3*c11.y*c12.y*c13x2*c22.x*c23.y + 3*c11.y*c12.y*c13x2*c22.y*c23.x - 2*c12.x*c12y2*c13.x*c22.x*c23.y -
+            2*c12.x*c12y2*c13.x*c22.y*c23.x - 2*c12.x*c12y2*c22.x*c13.y*c23.x - 6*c20.y*c13.x*c22.x*c13y2*c23.x -
+            6*c21.x*c13.x*c21.y*c13y2*c23.x - 6*c21.x*c13.x*c22.x*c13y2*c22.y + 6*c20.x*c13x2*c13.y*c22.y*c23.y +
+            2*c12x2*c12.y*c13.x*c22.y*c23.y + 2*c12x2*c12.y*c22.x*c13.y*c23.y + 2*c12x2*c12.y*c13.y*c22.y*c23.x +
+            3*c21.x*c22x2*c13y3 + 3*c21x2*c13y3*c23.x - 3*c13.x*c21.y*c22x2*c13y2 - 3*c21x2*c13.x*c13y2*c23.y +
+            c13x2*c22.x*c13.y*(6*c20.y*c23.y + 6*c21.y*c22.y) + c13x2*c13.y*c23.x*(6*c20.y*c22.y + 3*c21y2) +
+            c21.x*c13x2*c13.y*(6*c21.y*c23.y + 3*c22y2) + c13x3*(-2*c20.y*c22.y*c23.y - c23.y*(2*c20.y*c22.y + c21y2) -
+            c21.y*(2*c21.y*c23.y + c22y2) - c22.y*(2*c20.y*c23.y + 2*c21.y*c22.y)),
+        c11.x*c21.x*c12.y*c13.x*c13.y*c23.y + c11.x*c12.y*c13.x*c21.y*c13.y*c23.x + c11.x*c12.y*c13.x*c22.x*c13.y*c22.y -
+            c11.y*c12.x*c21.x*c13.x*c13.y*c23.y - c11.y*c12.x*c13.x*c21.y*c13.y*c23.x - c11.y*c12.x*c13.x*c22.x*c13.y*c22.y -
+            6*c11.y*c21.x*c12.y*c13.x*c13.y*c23.x - 6*c10.x*c21.x*c13y3*c23.x + 6*c20.x*c21.x*c13y3*c23.x +
+            2*c21.x*c12y3*c13.x*c23.x + 6*c10.x*c21.x*c13.x*c13y2*c23.y + 6*c10.x*c13.x*c21.y*c13y2*c23.x +
+            6*c10.x*c13.x*c22.x*c13y2*c22.y + 6*c10.y*c21.x*c13.x*c13y2*c23.x - 3*c11.x*c12.x*c21.x*c13y2*c23.y -
+            3*c11.x*c12.x*c21.y*c13y2*c23.x - 3*c11.x*c12.x*c22.x*c13y2*c22.y + 2*c11.x*c21.x*c12.y*c13y2*c23.x +
+            4*c11.y*c12.x*c21.x*c13y2*c23.x - 6*c10.y*c21.x*c13x2*c13.y*c23.y - 6*c10.y*c13x2*c21.y*c13.y*c23.x -
+            6*c10.y*c13x2*c22.x*c13.y*c22.y - 6*c20.x*c21.x*c13.x*c13y2*c23.y - 6*c20.x*c13.x*c21.y*c13y2*c23.x -
+            6*c20.x*c13.x*c22.x*c13y2*c22.y + 3*c11.y*c21.x*c12.y*c13x2*c23.y - 3*c11.y*c12.y*c13.x*c22x2*c13.y +
+            3*c11.y*c12.y*c13x2*c21.y*c23.x + 3*c11.y*c12.y*c13x2*c22.x*c22.y - 2*c12.x*c21.x*c12y2*c13.x*c23.y -
+            2*c12.x*c21.x*c12y2*c13.y*c23.x - 2*c12.x*c12y2*c13.x*c21.y*c23.x - 2*c12.x*c12y2*c13.x*c22.x*c22.y -
+            6*c20.y*c21.x*c13.x*c13y2*c23.x - 6*c21.x*c13.x*c21.y*c22.x*c13y2 + 6*c20.y*c13x2*c21.y*c13.y*c23.x +
+            2*c12x2*c21.x*c12.y*c13.y*c23.y + 2*c12x2*c12.y*c21.y*c13.y*c23.x + 2*c12x2*c12.y*c22.x*c13.y*c22.y -
+            3*c10.x*c22x2*c13y3 + 3*c20.x*c22x2*c13y3 + 3*c21x2*c22.x*c13y3 + c12y3*c13.x*c22x2 +
+            3*c10.y*c13.x*c22x2*c13y2 + c11.x*c12.y*c22x2*c13y2 + 2*c11.y*c12.x*c22x2*c13y2 -
+            c12.x*c12y2*c22x2*c13.y - 3*c20.y*c13.x*c22x2*c13y2 - 3*c21x2*c13.x*c13y2*c22.y +
+            c12x2*c12.y*c13.x*(2*c21.y*c23.y + c22y2) + c11.x*c12.x*c13.x*c13.y*(6*c21.y*c23.y + 3*c22y2) +
+            c21.x*c13x2*c13.y*(6*c20.y*c23.y + 6*c21.y*c22.y) + c12x3*c13.y*(-2*c21.y*c23.y - c22y2) +
+            c10.y*c13x3*(6*c21.y*c23.y + 3*c22y2) + c11.y*c12.x*c13x2*(-2*c21.y*c23.y - c22y2) +
+            c11.x*c12.y*c13x2*(-4*c21.y*c23.y - 2*c22y2) + c10.x*c13x2*c13.y*(-6*c21.y*c23.y - 3*c22y2) +
+            c13x2*c22.x*c13.y*(6*c20.y*c22.y + 3*c21y2) + c20.x*c13x2*c13.y*(6*c21.y*c23.y + 3*c22y2) +
+            c13x3*(-2*c20.y*c21.y*c23.y - c22.y*(2*c20.y*c22.y + c21y2) - c20.y*(2*c21.y*c23.y + c22y2) -
+            c21.y*(2*c20.y*c23.y + 2*c21.y*c22.y)),
+        -c10.x*c11.x*c12.y*c13.x*c13.y*c23.y + c10.x*c11.y*c12.x*c13.x*c13.y*c23.y + 6*c10.x*c11.y*c12.y*c13.x*c13.y*c23.x -
+            6*c10.y*c11.x*c12.x*c13.x*c13.y*c23.y - c10.y*c11.x*c12.y*c13.x*c13.y*c23.x + c10.y*c11.y*c12.x*c13.x*c13.y*c23.x +
+            c11.x*c11.y*c12.x*c12.y*c13.x*c23.y - c11.x*c11.y*c12.x*c12.y*c13.y*c23.x + c11.x*c20.x*c12.y*c13.x*c13.y*c23.y +
+            c11.x*c20.y*c12.y*c13.x*c13.y*c23.x + c11.x*c21.x*c12.y*c13.x*c13.y*c22.y + c11.x*c12.y*c13.x*c21.y*c22.x*c13.y -
+            c20.x*c11.y*c12.x*c13.x*c13.y*c23.y - 6*c20.x*c11.y*c12.y*c13.x*c13.y*c23.x - c11.y*c12.x*c20.y*c13.x*c13.y*c23.x -
+            c11.y*c12.x*c21.x*c13.x*c13.y*c22.y - c11.y*c12.x*c13.x*c21.y*c22.x*c13.y - 6*c11.y*c21.x*c12.y*c13.x*c22.x*c13.y -
+            6*c10.x*c20.x*c13y3*c23.x - 6*c10.x*c21.x*c22.x*c13y3 - 2*c10.x*c12y3*c13.x*c23.x + 6*c20.x*c21.x*c22.x*c13y3 +
+            2*c20.x*c12y3*c13.x*c23.x + 2*c21.x*c12y3*c13.x*c22.x + 2*c10.y*c12x3*c13.y*c23.y - 6*c10.x*c10.y*c13.x*c13y2*c23.x +
+            3*c10.x*c11.x*c12.x*c13y2*c23.y - 2*c10.x*c11.x*c12.y*c13y2*c23.x - 4*c10.x*c11.y*c12.x*c13y2*c23.x +
+            3*c10.y*c11.x*c12.x*c13y2*c23.x + 6*c10.x*c10.y*c13x2*c13.y*c23.y + 6*c10.x*c20.x*c13.x*c13y2*c23.y -
+            3*c10.x*c11.y*c12.y*c13x2*c23.y + 2*c10.x*c12.x*c12y2*c13.x*c23.y + 2*c10.x*c12.x*c12y2*c13.y*c23.x +
+            6*c10.x*c20.y*c13.x*c13y2*c23.x + 6*c10.x*c21.x*c13.x*c13y2*c22.y + 6*c10.x*c13.x*c21.y*c22.x*c13y2 +
+            4*c10.y*c11.x*c12.y*c13x2*c23.y + 6*c10.y*c20.x*c13.x*c13y2*c23.x + 2*c10.y*c11.y*c12.x*c13x2*c23.y -
+            3*c10.y*c11.y*c12.y*c13x2*c23.x + 2*c10.y*c12.x*c12y2*c13.x*c23.x + 6*c10.y*c21.x*c13.x*c22.x*c13y2 -
+            3*c11.x*c20.x*c12.x*c13y2*c23.y + 2*c11.x*c20.x*c12.y*c13y2*c23.x + c11.x*c11.y*c12y2*c13.x*c23.x -
+            3*c11.x*c12.x*c20.y*c13y2*c23.x - 3*c11.x*c12.x*c21.x*c13y2*c22.y - 3*c11.x*c12.x*c21.y*c22.x*c13y2 +
+            2*c11.x*c21.x*c12.y*c22.x*c13y2 + 4*c20.x*c11.y*c12.x*c13y2*c23.x + 4*c11.y*c12.x*c21.x*c22.x*c13y2 -
+            2*c10.x*c12x2*c12.y*c13.y*c23.y - 6*c10.y*c20.x*c13x2*c13.y*c23.y - 6*c10.y*c20.y*c13x2*c13.y*c23.x -
+            6*c10.y*c21.x*c13x2*c13.y*c22.y - 2*c10.y*c12x2*c12.y*c13.x*c23.y - 2*c10.y*c12x2*c12.y*c13.y*c23.x -
+            6*c10.y*c13x2*c21.y*c22.x*c13.y - c11.x*c11.y*c12x2*c13.y*c23.y - 2*c11.x*c11y2*c13.x*c13.y*c23.x +
+            3*c20.x*c11.y*c12.y*c13x2*c23.y - 2*c20.x*c12.x*c12y2*c13.x*c23.y - 2*c20.x*c12.x*c12y2*c13.y*c23.x -
+            6*c20.x*c20.y*c13.x*c13y2*c23.x - 6*c20.x*c21.x*c13.x*c13y2*c22.y - 6*c20.x*c13.x*c21.y*c22.x*c13y2 +
+            3*c11.y*c20.y*c12.y*c13x2*c23.x + 3*c11.y*c21.x*c12.y*c13x2*c22.y + 3*c11.y*c12.y*c13x2*c21.y*c22.x -
+            2*c12.x*c20.y*c12y2*c13.x*c23.x - 2*c12.x*c21.x*c12y2*c13.x*c22.y - 2*c12.x*c21.x*c12y2*c22.x*c13.y -
+            2*c12.x*c12y2*c13.x*c21.y*c22.x - 6*c20.y*c21.x*c13.x*c22.x*c13y2 - c11y2*c12.x*c12.y*c13.x*c23.x +
+            2*c20.x*c12x2*c12.y*c13.y*c23.y + 6*c20.y*c13x2*c21.y*c22.x*c13.y + 2*c11x2*c11.y*c13.x*c13.y*c23.y +
+            c11x2*c12.x*c12.y*c13.y*c23.y + 2*c12x2*c20.y*c12.y*c13.y*c23.x + 2*c12x2*c21.x*c12.y*c13.y*c22.y +
+            2*c12x2*c12.y*c21.y*c22.x*c13.y + c21x3*c13y3 + 3*c10x2*c13y3*c23.x - 3*c10y2*c13x3*c23.y +
+            3*c20x2*c13y3*c23.x + c11y3*c13x2*c23.x - c11x3*c13y2*c23.y - c11.x*c11y2*c13x2*c23.y +
+            c11x2*c11.y*c13y2*c23.x - 3*c10x2*c13.x*c13y2*c23.y + 3*c10y2*c13x2*c13.y*c23.x - c11x2*c12y2*c13.x*c23.y +
+            c11y2*c12x2*c13.y*c23.x - 3*c21x2*c13.x*c21.y*c13y2 - 3*c20x2*c13.x*c13y2*c23.y + 3*c20y2*c13x2*c13.y*c23.x +
+            c11.x*c12.x*c13.x*c13.y*(6*c20.y*c23.y + 6*c21.y*c22.y) + c12x3*c13.y*(-2*c20.y*c23.y - 2*c21.y*c22.y) +
+            c10.y*c13x3*(6*c20.y*c23.y + 6*c21.y*c22.y) + c11.y*c12.x*c13x2*(-2*c20.y*c23.y - 2*c21.y*c22.y) +
+            c12x2*c12.y*c13.x*(2*c20.y*c23.y + 2*c21.y*c22.y) + c11.x*c12.y*c13x2*(-4*c20.y*c23.y - 4*c21.y*c22.y) +
+            c10.x*c13x2*c13.y*(-6*c20.y*c23.y - 6*c21.y*c22.y) + c20.x*c13x2*c13.y*(6*c20.y*c23.y + 6*c21.y*c22.y) +
+            c21.x*c13x2*c13.y*(6*c20.y*c22.y + 3*c21y2) + c13x3*(-2*c20.y*c21.y*c22.y - c20y2*c23.y -
+            c21.y*(2*c20.y*c22.y + c21y2) - c20.y*(2*c20.y*c23.y + 2*c21.y*c22.y)),
+        -c10.x*c11.x*c12.y*c13.x*c13.y*c22.y + c10.x*c11.y*c12.x*c13.x*c13.y*c22.y + 6*c10.x*c11.y*c12.y*c13.x*c22.x*c13.y -
+            6*c10.y*c11.x*c12.x*c13.x*c13.y*c22.y - c10.y*c11.x*c12.y*c13.x*c22.x*c13.y + c10.y*c11.y*c12.x*c13.x*c22.x*c13.y +
+            c11.x*c11.y*c12.x*c12.y*c13.x*c22.y - c11.x*c11.y*c12.x*c12.y*c22.x*c13.y + c11.x*c20.x*c12.y*c13.x*c13.y*c22.y +
+            c11.x*c20.y*c12.y*c13.x*c22.x*c13.y + c11.x*c21.x*c12.y*c13.x*c21.y*c13.y - c20.x*c11.y*c12.x*c13.x*c13.y*c22.y -
+            6*c20.x*c11.y*c12.y*c13.x*c22.x*c13.y - c11.y*c12.x*c20.y*c13.x*c22.x*c13.y - c11.y*c12.x*c21.x*c13.x*c21.y*c13.y -
+            6*c10.x*c20.x*c22.x*c13y3 - 2*c10.x*c12y3*c13.x*c22.x + 2*c20.x*c12y3*c13.x*c22.x + 2*c10.y*c12x3*c13.y*c22.y -
+            6*c10.x*c10.y*c13.x*c22.x*c13y2 + 3*c10.x*c11.x*c12.x*c13y2*c22.y - 2*c10.x*c11.x*c12.y*c22.x*c13y2 -
+            4*c10.x*c11.y*c12.x*c22.x*c13y2 + 3*c10.y*c11.x*c12.x*c22.x*c13y2 + 6*c10.x*c10.y*c13x2*c13.y*c22.y +
+            6*c10.x*c20.x*c13.x*c13y2*c22.y - 3*c10.x*c11.y*c12.y*c13x2*c22.y + 2*c10.x*c12.x*c12y2*c13.x*c22.y +
+            2*c10.x*c12.x*c12y2*c22.x*c13.y + 6*c10.x*c20.y*c13.x*c22.x*c13y2 + 6*c10.x*c21.x*c13.x*c21.y*c13y2 +
+            4*c10.y*c11.x*c12.y*c13x2*c22.y + 6*c10.y*c20.x*c13.x*c22.x*c13y2 + 2*c10.y*c11.y*c12.x*c13x2*c22.y -
+            3*c10.y*c11.y*c12.y*c13x2*c22.x + 2*c10.y*c12.x*c12y2*c13.x*c22.x - 3*c11.x*c20.x*c12.x*c13y2*c22.y +
+            2*c11.x*c20.x*c12.y*c22.x*c13y2 + c11.x*c11.y*c12y2*c13.x*c22.x - 3*c11.x*c12.x*c20.y*c22.x*c13y2 -
+            3*c11.x*c12.x*c21.x*c21.y*c13y2 + 4*c20.x*c11.y*c12.x*c22.x*c13y2 - 2*c10.x*c12x2*c12.y*c13.y*c22.y -
+            6*c10.y*c20.x*c13x2*c13.y*c22.y - 6*c10.y*c20.y*c13x2*c22.x*c13.y - 6*c10.y*c21.x*c13x2*c21.y*c13.y -
+            2*c10.y*c12x2*c12.y*c13.x*c22.y - 2*c10.y*c12x2*c12.y*c22.x*c13.y - c11.x*c11.y*c12x2*c13.y*c22.y -
+            2*c11.x*c11y2*c13.x*c22.x*c13.y + 3*c20.x*c11.y*c12.y*c13x2*c22.y - 2*c20.x*c12.x*c12y2*c13.x*c22.y -
+            2*c20.x*c12.x*c12y2*c22.x*c13.y - 6*c20.x*c20.y*c13.x*c22.x*c13y2 - 6*c20.x*c21.x*c13.x*c21.y*c13y2 +
+            3*c11.y*c20.y*c12.y*c13x2*c22.x + 3*c11.y*c21.x*c12.y*c13x2*c21.y - 2*c12.x*c20.y*c12y2*c13.x*c22.x -
+            2*c12.x*c21.x*c12y2*c13.x*c21.y - c11y2*c12.x*c12.y*c13.x*c22.x + 2*c20.x*c12x2*c12.y*c13.y*c22.y -
+            3*c11.y*c21x2*c12.y*c13.x*c13.y + 6*c20.y*c21.x*c13x2*c21.y*c13.y + 2*c11x2*c11.y*c13.x*c13.y*c22.y +
+            c11x2*c12.x*c12.y*c13.y*c22.y + 2*c12x2*c20.y*c12.y*c22.x*c13.y + 2*c12x2*c21.x*c12.y*c21.y*c13.y -
+            3*c10.x*c21x2*c13y3 + 3*c20.x*c21x2*c13y3 + 3*c10x2*c22.x*c13y3 - 3*c10y2*c13x3*c22.y + 3*c20x2*c22.x*c13y3 +
+            c21x2*c12y3*c13.x + c11y3*c13x2*c22.x - c11x3*c13y2*c22.y + 3*c10.y*c21x2*c13.x*c13y2 -
+            c11.x*c11y2*c13x2*c22.y + c11.x*c21x2*c12.y*c13y2 + 2*c11.y*c12.x*c21x2*c13y2 + c11x2*c11.y*c22.x*c13y2 -
+            c12.x*c21x2*c12y2*c13.y - 3*c20.y*c21x2*c13.x*c13y2 - 3*c10x2*c13.x*c13y2*c22.y + 3*c10y2*c13x2*c22.x*c13.y -
+            c11x2*c12y2*c13.x*c22.y + c11y2*c12x2*c22.x*c13.y - 3*c20x2*c13.x*c13y2*c22.y + 3*c20y2*c13x2*c22.x*c13.y +
+            c12x2*c12.y*c13.x*(2*c20.y*c22.y + c21y2) + c11.x*c12.x*c13.x*c13.y*(6*c20.y*c22.y + 3*c21y2) +
+            c12x3*c13.y*(-2*c20.y*c22.y - c21y2) + c10.y*c13x3*(6*c20.y*c22.y + 3*c21y2) +
+            c11.y*c12.x*c13x2*(-2*c20.y*c22.y - c21y2) + c11.x*c12.y*c13x2*(-4*c20.y*c22.y - 2*c21y2) +
+            c10.x*c13x2*c13.y*(-6*c20.y*c22.y - 3*c21y2) + c20.x*c13x2*c13.y*(6*c20.y*c22.y + 3*c21y2) +
+            c13x3*(-2*c20.y*c21y2 - c20y2*c22.y - c20.y*(2*c20.y*c22.y + c21y2)),
+        -c10.x*c11.x*c12.y*c13.x*c21.y*c13.y + c10.x*c11.y*c12.x*c13.x*c21.y*c13.y + 6*c10.x*c11.y*c21.x*c12.y*c13.x*c13.y -
+            6*c10.y*c11.x*c12.x*c13.x*c21.y*c13.y - c10.y*c11.x*c21.x*c12.y*c13.x*c13.y + c10.y*c11.y*c12.x*c21.x*c13.x*c13.y -
+            c11.x*c11.y*c12.x*c21.x*c12.y*c13.y + c11.x*c11.y*c12.x*c12.y*c13.x*c21.y + c11.x*c20.x*c12.y*c13.x*c21.y*c13.y +
+            6*c11.x*c12.x*c20.y*c13.x*c21.y*c13.y + c11.x*c20.y*c21.x*c12.y*c13.x*c13.y - c20.x*c11.y*c12.x*c13.x*c21.y*c13.y -
+            6*c20.x*c11.y*c21.x*c12.y*c13.x*c13.y - c11.y*c12.x*c20.y*c21.x*c13.x*c13.y - 6*c10.x*c20.x*c21.x*c13y3 -
+            2*c10.x*c21.x*c12y3*c13.x + 6*c10.y*c20.y*c13x3*c21.y + 2*c20.x*c21.x*c12y3*c13.x + 2*c10.y*c12x3*c21.y*c13.y -
+            2*c12x3*c20.y*c21.y*c13.y - 6*c10.x*c10.y*c21.x*c13.x*c13y2 + 3*c10.x*c11.x*c12.x*c21.y*c13y2 -
+            2*c10.x*c11.x*c21.x*c12.y*c13y2 - 4*c10.x*c11.y*c12.x*c21.x*c13y2 + 3*c10.y*c11.x*c12.x*c21.x*c13y2 +
+            6*c10.x*c10.y*c13x2*c21.y*c13.y + 6*c10.x*c20.x*c13.x*c21.y*c13y2 - 3*c10.x*c11.y*c12.y*c13x2*c21.y +
+            2*c10.x*c12.x*c21.x*c12y2*c13.y + 2*c10.x*c12.x*c12y2*c13.x*c21.y + 6*c10.x*c20.y*c21.x*c13.x*c13y2 +
+            4*c10.y*c11.x*c12.y*c13x2*c21.y + 6*c10.y*c20.x*c21.x*c13.x*c13y2 + 2*c10.y*c11.y*c12.x*c13x2*c21.y -
+            3*c10.y*c11.y*c21.x*c12.y*c13x2 + 2*c10.y*c12.x*c21.x*c12y2*c13.x - 3*c11.x*c20.x*c12.x*c21.y*c13y2 +
+            2*c11.x*c20.x*c21.x*c12.y*c13y2 + c11.x*c11.y*c21.x*c12y2*c13.x - 3*c11.x*c12.x*c20.y*c21.x*c13y2 +
+            4*c20.x*c11.y*c12.x*c21.x*c13y2 - 6*c10.x*c20.y*c13x2*c21.y*c13.y - 2*c10.x*c12x2*c12.y*c21.y*c13.y -
+            6*c10.y*c20.x*c13x2*c21.y*c13.y - 6*c10.y*c20.y*c21.x*c13x2*c13.y - 2*c10.y*c12x2*c21.x*c12.y*c13.y -
+            2*c10.y*c12x2*c12.y*c13.x*c21.y - c11.x*c11.y*c12x2*c21.y*c13.y - 4*c11.x*c20.y*c12.y*c13x2*c21.y -
+            2*c11.x*c11y2*c21.x*c13.x*c13.y + 3*c20.x*c11.y*c12.y*c13x2*c21.y - 2*c20.x*c12.x*c21.x*c12y2*c13.y -
+            2*c20.x*c12.x*c12y2*c13.x*c21.y - 6*c20.x*c20.y*c21.x*c13.x*c13y2 - 2*c11.y*c12.x*c20.y*c13x2*c21.y +
+            3*c11.y*c20.y*c21.x*c12.y*c13x2 - 2*c12.x*c20.y*c21.x*c12y2*c13.x - c11y2*c12.x*c21.x*c12.y*c13.x +
+            6*c20.x*c20.y*c13x2*c21.y*c13.y + 2*c20.x*c12x2*c12.y*c21.y*c13.y + 2*c11x2*c11.y*c13.x*c21.y*c13.y +
+            c11x2*c12.x*c12.y*c21.y*c13.y + 2*c12x2*c20.y*c21.x*c12.y*c13.y + 2*c12x2*c20.y*c12.y*c13.x*c21.y +
+            3*c10x2*c21.x*c13y3 - 3*c10y2*c13x3*c21.y + 3*c20x2*c21.x*c13y3 + c11y3*c21.x*c13x2 - c11x3*c21.y*c13y2 -
+            3*c20y2*c13x3*c21.y - c11.x*c11y2*c13x2*c21.y + c11x2*c11.y*c21.x*c13y2 - 3*c10x2*c13.x*c21.y*c13y2 +
+            3*c10y2*c21.x*c13x2*c13.y - c11x2*c12y2*c13.x*c21.y + c11y2*c12x2*c21.x*c13.y - 3*c20x2*c13.x*c21.y*c13y2 +
+            3*c20y2*c21.x*c13x2*c13.y,
+        c10.x*c10.y*c11.x*c12.y*c13.x*c13.y - c10.x*c10.y*c11.y*c12.x*c13.x*c13.y + c10.x*c11.x*c11.y*c12.x*c12.y*c13.y -
+            c10.y*c11.x*c11.y*c12.x*c12.y*c13.x - c10.x*c11.x*c20.y*c12.y*c13.x*c13.y + 6*c10.x*c20.x*c11.y*c12.y*c13.x*c13.y +
+            c10.x*c11.y*c12.x*c20.y*c13.x*c13.y - c10.y*c11.x*c20.x*c12.y*c13.x*c13.y - 6*c10.y*c11.x*c12.x*c20.y*c13.x*c13.y +
+            c10.y*c20.x*c11.y*c12.x*c13.x*c13.y - c11.x*c20.x*c11.y*c12.x*c12.y*c13.y + c11.x*c11.y*c12.x*c20.y*c12.y*c13.x +
+            c11.x*c20.x*c20.y*c12.y*c13.x*c13.y - c20.x*c11.y*c12.x*c20.y*c13.x*c13.y - 2*c10.x*c20.x*c12y3*c13.x +
+            2*c10.y*c12x3*c20.y*c13.y - 3*c10.x*c10.y*c11.x*c12.x*c13y2 - 6*c10.x*c10.y*c20.x*c13.x*c13y2 +
+            3*c10.x*c10.y*c11.y*c12.y*c13x2 - 2*c10.x*c10.y*c12.x*c12y2*c13.x - 2*c10.x*c11.x*c20.x*c12.y*c13y2 -
+            c10.x*c11.x*c11.y*c12y2*c13.x + 3*c10.x*c11.x*c12.x*c20.y*c13y2 - 4*c10.x*c20.x*c11.y*c12.x*c13y2 +
+            3*c10.y*c11.x*c20.x*c12.x*c13y2 + 6*c10.x*c10.y*c20.y*c13x2*c13.y + 2*c10.x*c10.y*c12x2*c12.y*c13.y +
+            2*c10.x*c11.x*c11y2*c13.x*c13.y + 2*c10.x*c20.x*c12.x*c12y2*c13.y + 6*c10.x*c20.x*c20.y*c13.x*c13y2 -
+            3*c10.x*c11.y*c20.y*c12.y*c13x2 + 2*c10.x*c12.x*c20.y*c12y2*c13.x + c10.x*c11y2*c12.x*c12.y*c13.x +
+            c10.y*c11.x*c11.y*c12x2*c13.y + 4*c10.y*c11.x*c20.y*c12.y*c13x2 - 3*c10.y*c20.x*c11.y*c12.y*c13x2 +
+            2*c10.y*c20.x*c12.x*c12y2*c13.x + 2*c10.y*c11.y*c12.x*c20.y*c13x2 + c11.x*c20.x*c11.y*c12y2*c13.x -
+            3*c11.x*c20.x*c12.x*c20.y*c13y2 - 2*c10.x*c12x2*c20.y*c12.y*c13.y - 6*c10.y*c20.x*c20.y*c13x2*c13.y -
+            2*c10.y*c20.x*c12x2*c12.y*c13.y - 2*c10.y*c11x2*c11.y*c13.x*c13.y - c10.y*c11x2*c12.x*c12.y*c13.y -
+            2*c10.y*c12x2*c20.y*c12.y*c13.x - 2*c11.x*c20.x*c11y2*c13.x*c13.y - c11.x*c11.y*c12x2*c20.y*c13.y +
+            3*c20.x*c11.y*c20.y*c12.y*c13x2 - 2*c20.x*c12.x*c20.y*c12y2*c13.x - c20.x*c11y2*c12.x*c12.y*c13.x +
+            3*c10y2*c11.x*c12.x*c13.x*c13.y + 3*c11.x*c12.x*c20y2*c13.x*c13.y + 2*c20.x*c12x2*c20.y*c12.y*c13.y -
+            3*c10x2*c11.y*c12.y*c13.x*c13.y + 2*c11x2*c11.y*c20.y*c13.x*c13.y + c11x2*c12.x*c20.y*c12.y*c13.y -
+            3*c20x2*c11.y*c12.y*c13.x*c13.y - c10x3*c13y3 + c10y3*c13x3 + c20x3*c13y3 - c20y3*c13x3 -
+            3*c10.x*c20x2*c13y3 - c10.x*c11y3*c13x2 + 3*c10x2*c20.x*c13y3 + c10.y*c11x3*c13y2 +
+            3*c10.y*c20y2*c13x3 + c20.x*c11y3*c13x2 + c10x2*c12y3*c13.x - 3*c10y2*c20.y*c13x3 - c10y2*c12x3*c13.y +
+            c20x2*c12y3*c13.x - c11x3*c20.y*c13y2 - c12x3*c20y2*c13.y - c10.x*c11x2*c11.y*c13y2 +
+            c10.y*c11.x*c11y2*c13x2 - 3*c10.x*c10y2*c13x2*c13.y - c10.x*c11y2*c12x2*c13.y + c10.y*c11x2*c12y2*c13.x -
+            c11.x*c11y2*c20.y*c13x2 + 3*c10x2*c10.y*c13.x*c13y2 + c10x2*c11.x*c12.y*c13y2 +
+            2*c10x2*c11.y*c12.x*c13y2 - 2*c10y2*c11.x*c12.y*c13x2 - c10y2*c11.y*c12.x*c13x2 + c11x2*c20.x*c11.y*c13y2 -
+            3*c10.x*c20y2*c13x2*c13.y + 3*c10.y*c20x2*c13.x*c13y2 + c11.x*c20x2*c12.y*c13y2 - 2*c11.x*c20y2*c12.y*c13x2 +
+            c20.x*c11y2*c12x2*c13.y - c11.y*c12.x*c20y2*c13x2 - c10x2*c12.x*c12y2*c13.y - 3*c10x2*c20.y*c13.x*c13y2 +
+            3*c10y2*c20.x*c13x2*c13.y + c10y2*c12x2*c12.y*c13.x - c11x2*c20.y*c12y2*c13.x + 2*c20x2*c11.y*c12.x*c13y2 +
+            3*c20.x*c20y2*c13x2*c13.y - c20x2*c12.x*c12y2*c13.y - 3*c20x2*c20.y*c13.x*c13y2 + c12x2*c20y2*c12.y*c13.x
+    );
+	var roots=poly.getRootsInInterval(0,1);
+	for(var i=0;i<roots.length;i++){
+		var s=roots[i];
+		var xRoots=new Polynomial(c13.x,c12.x,c11.x,c10.x-c20.x-s*c21.x-s*s*c22.x-s*s*s*c23.x).getRoots();
+		var yRoots=new Polynomial(c13.y,c12.y,c11.y,c10.y-c20.y-s*c21.y-s*s*c22.y-s*s*s*c23.y).getRoots();
+		if(xRoots.length>0&&yRoots.length>0){
+			var toler=1e-4;
+			checkRoots:for(var j=0;j<xRoots.length;j++){
+				var xRoot=xRoots[j];
+				if(0<=xRoot&&xRoot<=1){
+				for(var k=0;k<yRoots.length;k++){
+					if(Math.abs(xRoot-yRoots[k])<toler){
+						result.push([c23.multiply(s*s*s).add(c22.multiply(s*s).add(c21.multiply(s).add(c20))),xRoot,roots[i]]);
+						break checkRoots;
+					}
+				}
+			}
+		}
+	}}
+    return result;
+};
+/*Point*/
+function Point(x,y){
+	this.x = x;
+	this.y = y;
+}
+Point.prototype.add = function(point2){
+	return new Point(this.x+point2.x,this.y+point2.y);
+}
+Point.prototype.addValue = function(value){
+	return new Point(this.x+value,this.y+value);
+}
+Point.prototype.multiply=function(value){
+	return new Point(this.x*value,this.y*value);
+};
+Point.prototype.dot=function(point2){
+	return this.x*point2.x+this.y*point2.y;
+};
+Point.prototype.lerp=function(point2,t){
+	return new Point(this.x+(point2.x-this.x)*t,this.y+(point2.y-this.y)*t);
+};
+Point.prototype.isGE=function(point2){
+	return(this.x>=point2.x&&this.y>=point2.y);
+};
+Point.prototype.isLE=function(point2){
+	return(this.x<=point2.x&&this.y<=point2.y);
+};
+Point.prototype.min=function(point2){
+	return new Point(Math.min(this.x,point2.x),Math.min(this.y,point2.y));
+};
+Point.prototype.max=function(point2){
+	return new Point(Math.max(this.x,point2.x),Math.max(this.y,point2.y));
+};
+Point.prototype.subtract=function(point2){
+	return new Point(this.x-point2.x,this.y-point2.y);
+};
+Point.prototype.isEqual=function(point2){
+	return(this.x==point2.x&&this.y==point2.y);
+};
+
+/*Polinimial*/
+function Polynomial(){
+	this.coefs=[];
+   	if(arguments.length>0)
+		for(var i=arguments.length-1;i>=0;i--)
+   			this.coefs.push(arguments[i]);
+	this.tolerance =1e-6;
+	this.accuracy=6
+}
+Polynomial.prototype.eval=function(x){
+    var result=0;
+	for(var i=this.coefs.length-1;i>=0;i--)
+	   result=result*x+this.coefs[i];
+	   return result;
+};
+Polynomial.prototype.simplify=function(){
+	for(var i=this.getDegree();i>=0;i--){
+		if(Math.abs(this.coefs[i])<=this.tolerance)
+			this.coefs.pop();
+		else break;
+	}
+};
+Polynomial.prototype.bisection=function(min,max){
+	var minValue=this.eval(min);
+	var maxValue=this.eval(max);
+	var result;
+	if(Math.abs(minValue)<=this.tolerance)
+		result=min;
+	else if(Math.abs(maxValue)<=this.tolerance)
+		result=max;
+	else if(minValue*maxValue<=0){
+		var tmp1=Math.log(max-min);
+		var tmp2=Math.log(10)*this.accuracy;
+		var iters=Math.ceil((tmp1+tmp2)/Math.log(2));
+		for(var i=0;i<iters;i++){
+			result=0.5*(min+max);
+			var value=this.eval(result);
+			if(Math.abs(value)<=this.tolerance){
+				break;
+			}
+			if(value*minValue<0){
+				max=result;
+				maxValue=value;
+			}else{
+				min=result;minValue=value;
+			}
+		}
+	}
+	return result;
+};
+Polynomial.prototype.getDegree=function(){
+	return this.coefs.length-1;
+};
+Polynomial.prototype.getDerivative=function(){var derivative=new Polynomial();for(var i=1;i<this.coefs.length;i++){derivative.coefs.push(i*this.coefs[i]);}return derivative;};
+Polynomial.prototype.getRoots=function(){var result;this.simplify();switch(this.getDegree()){case 0:result=new Array();break;case 1:result=this.getLinearRoot();break;case 2:result=this.getQuadraticRoots();break;case 3:result=this.getCubicRoots();break;case 4:result=this.getQuarticRoots();break;default:result=new Array();}return result;};
+Polynomial.prototype.getRootsInInterval=function(min,max){var roots=new Array();var root;if(this.getDegree()==1){root=this.bisection(min,max);if(root!=null)roots.push(root);}else{var deriv=this.getDerivative();var droots=deriv.getRootsInInterval(min,max);if(droots.length>0){root=this.bisection(min,droots[0]);if(root!=null)roots.push(root);for(i=0;i<=droots.length-2;i++){root=this.bisection(droots[i],droots[i+1]);if(root!=null)roots.push(root);}root=this.bisection(droots[droots.length-1],max);if(root!=null)roots.push(root);}else{root=this.bisection(min,max);if(root!=null)roots.push(root);}}return roots;};
+Polynomial.prototype.getCubicRoots=function(){var results=new Array();if(this.getDegree()==3){var c3=this.coefs[3];var c2=this.coefs[2]/c3;var c1=this.coefs[1]/c3;var c0=this.coefs[0]/c3;var a=(3*c1-c2*c2)/3;var b=(2*c2*c2*c2-9*c1*c2+27*c0)/27;var offset=c2/3;var discrim=b*b/4 + a*a*a/27;var halfB=b/2;if(Math.abs(discrim)<=this.tolerance)disrim=0;if(discrim>0){var e=Math.sqrt(discrim);var tmp;var root;tmp=-halfB+e;if(tmp>=0)root=Math.pow(tmp,1/3);else root=-Math.pow(-tmp,1/3);tmp=-halfB-e;if(tmp>=0)root+=Math.pow(tmp,1/3);else root-=Math.pow(-tmp,1/3);results.push(root-offset);}else if(discrim<0){var distance=Math.sqrt(-a/3);var angle=Math.atan2(Math.sqrt(-discrim),-halfB)/3;var cos=Math.cos(angle);var sin=Math.sin(angle);var sqrt3=Math.sqrt(3);results.push(2*distance*cos-offset);results.push(-distance*(cos+sqrt3*sin)-offset);results.push(-distance*(cos-sqrt3*sin)-offset);}else{var tmp;if(halfB>=0)tmp=-Math.pow(halfB,1/3);else tmp=Math.pow(-halfB,1/3);results.push(2*tmp-offset);results.push(-tmp-offset);}}return results;};
+Polynomial.prototype.getQuadraticRoots=function(){var results=new Array();if(this.getDegree()==2){var a=this.coefs[2];var b=this.coefs[1]/a;var c=this.coefs[0]/a;var d=b*b-4*c;if(d>0){var e=Math.sqrt(d);results.push(0.5*(-b+e));results.push(0.5*(-b-e));}else if(d==0){results.push(0.5*-b);}}return results;};

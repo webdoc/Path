@@ -1,0 +1,86 @@
+<!DOCTYPE HTML>
+<html><head>
+<meta http-equiv="content-type" content="text/html; charset=windows-1251">
+
+
+	<title>path</title>
+	<link href="css/reset.css" media="all" rel="stylesheet" type="text/css">
+	<link href="css/column.css" media="all" rel="stylesheet" type="text/css">
+	<link href="css/site.css" media="all" rel="stylesheet" type="text/css">
+	<style>
+		body {
+			padding: 24px;
+			background: #eeeeee;
+		}
+		canvas {
+			display: block;
+		}
+		canvas, svg, img {
+			background: white;
+		}
+		h4 {
+			margin-bottom: 1em;
+		}
+		p {
+			margin-bottom: 1em;
+		}
+	</style>
+</head><body>
+	
+	<!-- TEST -->
+	
+	<h2>path.union( <i>path</i> )</h2>
+	<p>.union() merges two paths into one.</p>
+	<div class="column of_three">
+		<h4>expected result</h4>
+	</div><div class="column of_three">
+		<h4>canvas</h4>
+		<canvas id="union_canvas"></canvas>
+	</div><div class="last column of_three">
+		<h4>svg</h4>
+		<!-- svg -->
+	</div>
+	
+	<script src="js/jquery.js" type="text/javascript"></script>
+	<script src="js/canvas.js" type="text/javascript"></script>
+	<script src="../path.js" type="text/javascript"></script>
+	<script src="../path.union.js" type="text/javascript"></script>
+	<script type="text/javascript">
+		
+		// .union() test ---------------------------------------
+		var bubble = [
+					{ type: 'moveTo', data: [0,-60] },
+					{ type: 'bezierCurveTo', data: [40,-60, 60, -40, 60, 0] },
+					{ type: 'bezierCurveTo', data: [60, 40,	40, 60, 0, 60] },
+					{ type: 'bezierCurveTo', data: [-40,60,-60,	40, -60,0] },
+					{ type: 'bezierCurveTo', data: [-60,-40,-40,-60, 0,-60] }
+				];
+		
+		var stalk = [
+					{ type: 'moveTo', data: [-20,0] },
+					{ type: 'bezierCurveTo', data: [-10,20,-5,40,0,120] },
+					{ type: 'bezierCurveTo', data: [5,40,10,20,20,0] },
+					{ type: 'bezierCurveTo', data: [10,0,-10,0,-20,0] }
+				];
+		
+		var unionCanvas = Canvas( 256, 256, document.getElementById('union_canvas'));
+		var bubblePath = Path(bubble);
+		var stalkPath = Path(stalk);
+		
+		unionCanvas
+		.clear()
+		.translate(130,130)
+		.style({
+		  fillStyle: "transparent",
+		  strokeStyle: "rgb(150,50,50)",
+		  lineWidth: 2
+		})
+		.begin()
+		//.plot( bubblePath )
+		//.plot( stalkPath )
+		.plot( bubblePath.union( stalkPath ) )
+		.close()
+		.stroke();
+		
+	</script>
+</body></html>
