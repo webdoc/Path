@@ -62,19 +62,26 @@
 		// .union() test ---------------------------------------
 		var bubble = [
 					{ type: 'moveTo', data: [0,-60] },
-					{ type: 'bezierCurveTo', data: [-40,-60, -60, -40, -60, 0] },
-					{ type: 'bezierCurveTo', data: [-60, 40, -40, 60, 0, 60] },
-					{ type: 'bezierCurveTo', data: [40,60,60,	40, 60,0] },
-					{ type: 'bezierCurveTo', data: [60,-40,40,-60, 0,-60] }
+					{ type: 'bezierCurveTo', data: [40,-60, 60, -40, 60, 0] },
+					{ type: 'bezierCurveTo', data: [60, 40,	40, 60, 0, 60] },
+					{ type: 'bezierCurveTo', data: [-40,60,-60,	40, -60,0] },
+					{ type: 'bezierCurveTo', data: [-60,-40,-40,-60, 0,-60] }
 				];
-		
+		/*
 		var stalk = [
-					{ type: 'moveTo', data: [20,0] },
+					{ type: 'moveTo', data: [-20,0] },
+					{ type: 'bezierCurveTo', data: [-10,20,-5,40,0,120] },
+					{ type: 'bezierCurveTo', data: [5,40,10,20,20,0] },
+					{ type: 'bezierCurveTo', data: [10,0,-10,0,-20,0] }
+				];*/
+		var stalk = [
+					{ type: 'moveTo', data: [-20,0] },
+					{ type: 'bezierCurveTo', data: [-10,0,10,0,20,0] },
 					{ type: 'bezierCurveTo', data: [10,20,5,40,0,120] },
 					{ type: 'bezierCurveTo', data: [-5,40,-10,20,-20,0] },
-					{ type: 'bezierCurveTo', data: [-10,0,10,0,20,0] }
-				];
-		
+					
+					
+				];	
 		var unionCanvas, output;
 		var bubblePath = Path(bubble);
 		var stalkPath = Path(stalk);
@@ -85,13 +92,12 @@
 		
 		function animate(){
 			var nowTime = new Date().getTime();
-			
 			frameCount++;
 			output.innerHTML = String( ( nowTime - startTime ) / frameCount ) ;
 			
 			unionCanvas
 			.clear()
-			.translate(130,130)
+			.translate(150,150)
 			.style({
 				fillStyle: "transparent",
 				strokeStyle: "rgb(150,50,50)",
@@ -101,7 +107,7 @@
 			//.plot( bubblePath )
 			//.plot( stalkPath )
 			.plot( bubblePath.union( stalkPath.rotate(angle) ) )
-			.close()
+			//.close()
 			.stroke();
 			
 			angle = angle + Math.PI/180;
@@ -110,7 +116,7 @@
 		}
 		
 		jQuery(document).ready(function(){
-			unionCanvas = Canvas( 256, 256, document.getElementById('union_canvas') );
+			unionCanvas = Canvas( 356, 356, document.getElementById('union_canvas') );
 			output = document.getElementById('output');
 			startTime = new Date().getTime();
 			
