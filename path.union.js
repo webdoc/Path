@@ -96,7 +96,6 @@ pathUnion.prototype.getOverallPath = function(pi,li,point){
 	var p =  this.getLineIntersectionPoints(pi,i);
 	
 	if(!p.length){
-		console.log("path="+pi+";line+"+i+";index in path="+this.path.length)
 		var pI = this.getPoints(bounds[i]);
 	   	this.path.push(pI);
 	  	i = this.getNextIndex(pi,i,pI[pI.length-1]);
@@ -376,9 +375,9 @@ pathUnion.prototype.getBounds = function(path){
 		}
 		if(bounds[i].length&&bounds[i].length>4){
 			var rand = Math.random();
-			if(bounds[i][2]==parseInt(bounds[i][2],10))
+			//if(bounds[i][2]==parseInt(bounds[i][2],10))
 				bounds[i][2] += Math.round(rand*100)/10000;
-			if(bounds[i][3]==parseInt(bounds[i][3],10))
+			//if(bounds[i][3]==parseInt(bounds[i][3],10))
 				bounds[i][3] +=  Math.round((1-rand)*100)/10000;
 		}
 	}

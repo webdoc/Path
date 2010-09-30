@@ -92,6 +92,10 @@
 		
 		function animate(){
 			var nowTime = new Date().getTime();
+			angle = angle + Math.PI/180*100;
+			var rs = stalkPath.rotate(angle) 
+			debugger
+			var path = bubblePath.union(rs ) 
 			frameCount++;
 			output.innerHTML = String( ( nowTime - startTime ) / frameCount ) ;
 			
@@ -106,13 +110,13 @@
 			.begin()
 			//.plot( bubblePath )
 			//.plot( stalkPath )
-			.plot( bubblePath.union( stalkPath.rotate(angle) ) )
+			.plot(path )
 			//.close()
 			.stroke();
 			
 			angle = angle + Math.PI/180;
-			
-			t = setTimeout(animate, 0);
+			debugger
+			//t = setTimeout(animate, 0);
 		}
 		
 		jQuery(document).ready(function(){
