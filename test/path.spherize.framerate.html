@@ -140,16 +140,13 @@
 		  	frameCount = 0;
 		
 		function animate(){
-			var nowTime = new Date().getTime();
 			
 			radius = radius - ( 0.01 * (radius - 108) ) ;
 			distance = distance - ( 0.005 * (distance - 220) );
 			
-			var path = gridPath.spherize( radius, distance );
-			
 			frameCount++;
 			
-			output.innerHTML = String( ( nowTime - startTime ) / frameCount ) ;
+			var path = gridPath.spherize( radius, distance );
 			
 			unionCanvas
 			.clear()
@@ -163,6 +160,9 @@
 			.plot( path )
 			.close()
 			.stroke();
+			
+			var nowTime = new Date().getTime();
+			output.innerHTML = String( ( nowTime - startTime ) / frameCount ) ;
 			
 			t = setTimeout(animate, 0);
 		}
