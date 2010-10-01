@@ -14,6 +14,7 @@ function pathUnion(path1,path2){
 		this.getOverallPath();
 	}
 	this.path = this.getPathFromPoints(this.path);
+	//debugger
 }
 /*gets the path union (non intersection case)*/
 pathUnion.prototype.getPathsUnion = function(){
@@ -71,22 +72,42 @@ pathUnion.prototype.getOverallPath = function(pi,li,point){
 	var i = li;
 	
 	var bounds = this.bounds[pi];
-	
-	var length = bounds[i].length;
-	if((pi==this.start[0])&&(i==(bounds.length-1))&&(bounds[i][length-2]==this.startPoint[0])&&(bounds[i][length-1]==this.startPoint[1])){
-		this.path.push(this.getPoints(bounds[i]));
-		return null;
-	}
+	var endX = bounds[i][bounds[i].length-2];
+	var endY = bounds[i][bounds[i].length-1];
+	 
 	var p =  this.getLineIntersectionPoints(pi,i);
+	
+		
 	/*if the line needs being splitted*/
 	if(point){
 		var curve = this.getSplittedCurveAfter(pi,i,point);
+			
 		this.path.push(curve[0]);
-		if(curve[1] == (p.length-1)) i = this.getNextIndex(pi,i,curve[0][3]);
-		else{
+		if(curve[1] == (p.length-1)){
+			
+			endX = curve[0][3].x;
+			endY = curve[0][3].y;
+			
+		 	if(this.isPathFinished(pi,i,endX,endY)){
+				return null;
+			}
+			else{
+			
+				i = this.getNextIndex(pi,i,curve[0][3]);
+				
+				var endX = bounds[i][bounds[i].length-2];
+				var endY = bounds[i][bounds[i].length-1];
+			}
+		}else{
 			return this.getOverallPath(1-pi,p[curve[1]+1].line2Index,p[curve[1]+1].point);
 		}
 	}
+	if(!this.getLineIntersectionPoints(pi,i).length&&this.isPathFinished(pi,i,endX,endY)){
+		
+		this.path.push(this.getPoints(bounds[i]));
+		return null
+	}
+	
 	if(!this.processed_points)
 	   	this.processed_points = {};
 	if(!this.processed_points[pi])
@@ -96,24 +117,33 @@ pathUnion.prototype.getOverallPath = function(pi,li,point){
 	var p =  this.getLineIntersectionPoints(pi,i);
 	
 	if(!p.length){
+		
 		var pI = this.getPoints(bounds[i]);
 	   	this.path.push(pI);
 	  	i = this.getNextIndex(pi,i,pI[pI.length-1]);
 	    return this.getOverallPath(pi,i);
 	}
 	else{
-		
 		if(!this.processed_points[pi][i])
 			this.processed_points[pi][i] = 0;
 		var inters_point = this.processed_points[pi][i];
 		if(!p[inters_point]) return;
+		
 		var curve = this.getSplittedCurveBefore(pi,i,p[inters_point].point);
 	    this.processed_points[pi][i]++;
+		
 	   	this.path.push(curve[0]);
 	   	return this.getOverallPath(1-pi,p[inters_point].line2Index,p[inters_point].point);
 	}
+	
 	return null;
 }
+pathUnion.prototype.isPathFinished = function(pi,i,x,y){
+	var bounds = this.bounds[pi];
+	if((pi==this.start[0])&&(i==(bounds.length-1))&&this.startPoint[0]==x&&this.startPoint[1]==y)
+		return true
+	return false
+} 
 
 /** gets the index for the next point in overall path
     @param pi - path index
@@ -292,6 +322,7 @@ pathUnion.prototype.getT = function(p0,p1,p2,p3,p){
 	if((t1<=1)&&(t1>=0)) t.push(t1);
 	if((t2<=1)&&(t2>=0)) t.push(t2);
 	if(t.length==1){
+	
 		return t[0]
 	}
 	else if(t.length==2){
@@ -354,6 +385,24 @@ pathUnion.prototype.getAllInsersectionPoints = function(){
 	}
 	return points;
 }
+pathUnion.prototype.addIntersectionPoint =function(points,i,j,p){
+	var exists = false;
+	for(var k =0;k < points.length;k++){
+		if(points[k][0]==i&&points[k][1]==j){
+			exists = true
+			break
+		}
+	}
+	if(exists){
+		for(var l=0;l<points[k][2].length;l++){
+			if(points[k][2][l][0]==p)
+				return points
+		}
+		points[k][2].push([p])
+	}
+	else points.push([i,j,[[p]]]);
+	return points
+}
 /** returns "bounds" interpretation for a path:
 		moveTo[x,y] => [x,y]
 		lineTo[x2,y2] => [x1,y1,x2,y2]
@@ -375,10 +424,10 @@ pathUnion.prototype.getBounds = function(path){
 		}
 		if(bounds[i].length&&bounds[i].length>4){
 			var rand = Math.random();
-			//if(bounds[i][2]==parseInt(bounds[i][2],10))
-				bounds[i][2] += Math.round(rand*100)/10000;
-			//if(bounds[i][3]==parseInt(bounds[i][3],10))
-				bounds[i][3] +=  Math.round((1-rand)*100)/10000;
+			if(bounds[i][2]==parseInt(bounds[i][2],10))
+				bounds[i][2] += 0.01;
+			if(bounds[i][3]==parseInt(bounds[i][3],10))
+				bounds[i][3] +=  0.02;
 		}
 	}
 	return bounds;
@@ -389,9 +438,7 @@ pathUnion.prototype.getInsertsectedPoligons = function(path1,path2){
 		var path1 = this.paths[0];
 		var path2 = this.paths[1];
 	}
-	this.bounds = [];
-	this.bounds[0] = this.getBounds(path1);
-	this.bounds[1] = this.getBounds(path2);
+	this.setBounds()
 	var inter = [];
 	for(var i= 0; i < path1.length; i++){
 		for(var j=0; j < path2.length; j++){
@@ -403,8 +450,6 @@ pathUnion.prototype.getInsertsectedPoligons = function(path1,path2){
 	}
 	return inter;
 }
-
-
 
 /**gets array of objects class Point from values array
    @param values - array [a0,a1,...]
@@ -866,7 +911,7 @@ pathUnion.prototype.intersectCurveCurve=function(a1,a2,a3,a4,b1,b2,b3,b4){
 		var xRoots=new Polynomial(c13.x,c12.x,c11.x,c10.x-c20.x-s*c21.x-s*s*c22.x-s*s*s*c23.x).getRoots();
 		var yRoots=new Polynomial(c13.y,c12.y,c11.y,c10.y-c20.y-s*c21.y-s*s*c22.y-s*s*s*c23.y).getRoots();
 		if(xRoots.length>0&&yRoots.length>0){
-			var toler=1e-4;
+			var toler=0.001//1e-4;
 			checkRoots:for(var j=0;j<xRoots.length;j++){
 				var xRoot=xRoots[j];
 				if(0<=xRoot&&xRoot<=1){
