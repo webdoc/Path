@@ -284,7 +284,7 @@
 		// perspective distortion applied to that projection.
 		// [TODO: origin is not implemented]
 		
-		spherize: function( radius, distance, origin ){
+		spherize: function( radius, distance ){
 			var r = radius || 100,
 					z = distance || 800,
 					l = this.length,
@@ -456,12 +456,15 @@
 			return JSON.stringify( array );
 		},
 		
-		// .toSVG() returns this path as an SVG DOMNode
-		// [TODO] this is unfinished and untested
+		// .toSVG() returns this path as an SVG DOMNode.
 		
-		toSVG: function(){
-			var pathNode = document.createElement('path');
+		toSVG: function( options ){
+			var pathNode = document.createElement('path'),
+					key;
 			
+			for ( key in options ){
+				pathNode.setAttribute( key, options[key] );
+			}
 			pathNode.setAttribute( 'd', this.toSVGData() );
 			return pathNode;
 		},

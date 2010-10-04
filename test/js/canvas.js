@@ -1,7 +1,7 @@
 // canvas.js
 // 
 // Wraps the Canvas 2D context API with a light, concise,
-// chainable syntax. In other words, it's sugar.
+// chainable syntax. In other words, it's syntactic sugar.
 
 (function(undefined){
 	
