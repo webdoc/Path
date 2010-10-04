@@ -43,8 +43,8 @@ pathUnion.prototype.isPointInside = function(p,limits){
 pathUnion.prototype.getPathLimits = function(pi){
 	var minX = Infinity;
 	var minY = Infinity;
-	var maxX = 0;
-	var maxY = 0;
+	var maxX = -Infinity;
+	var maxY = -Infinity;
 	var bounds = this.bounds[pi];
 	for(var i =0; i < bounds.length;i++){
 		var points = this.getPoints(bounds[i]);
@@ -250,22 +250,33 @@ pathUnion.prototype.getLineIntersectionPoints = function(pathIndex,lineIndex){
 	points.sort(function(a,b){return a.t > b.t ? 1 : -1; });
 	return points;
 }
+/** gets the start point of the overall path
+    @param pathIndex - index of a path (0 or 1)
+	@param lineIndex - index of the line in a path
+	@param line2Index - index of the checked line in the other path
+	returns array of [pathIndex,lineIndex]
+**/
 pathUnion.prototype.getStartPoint = function(i,ic,jc){
 	if(!arguments.length){
 		var i=0;
-		var ic=1;
+		var ic=0;
 		var jc=1;
 	}
+	ic++;
+	var maxP = this.getPathLimits(1-i)[1];
 	var spath = this.bounds[i][ic];
 	var path2 = this.bounds[1-i];
-	var points = []
-	for(var k=0;k< path2.length;k++){
-		var res = this.intersectLinePolygon(new Point(spath[0],spath[1]),new Point(spath[0]+1,spath[1]+1),path2[k],1)
-		if(res)
-			points.concat(res);
+	var length = 0;
+	for(var k=1;k< path2.length;k++){
+		var p = this.getPoints(path2[k]);
+		if(p.length<4) continue;
+		var res = this.intersectLineCurve(new Point(spath[0],spath[1]),new Point(maxP.x+1,maxP.y+10),p[0],p[1],p[2],p[3])
+		if(res){
+			length +=res.length;
+		}
 	}
-	if(points.length&&points.length%2)
-		return this.getStartPoint(1-i,jc,ic++);
+	if(length&&length%2)
+		return this.getStartPoint(1-i,jc,ic);
 	return [i,ic];
 }
 /** splits the bezier curve on 2 curves
