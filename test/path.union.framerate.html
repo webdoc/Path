@@ -76,11 +76,9 @@
 				];*/
 		var stalk = [
 					{ type: 'moveTo', data: [-20,0] },
-					{ type: 'bezierCurveTo', data: [-10,0,10,0,20,0] },
-					{ type: 'bezierCurveTo', data: [10,20,5,40,0,120] },
-					{ type: 'bezierCurveTo', data: [-5,40,-10,20,-20,0] },
-					
-					
+					{ type: 'bezierCurveTo', data: [-20,0,10,0,60,0] },
+					{ type: 'bezierCurveTo', data: [40,20,20,40,0,120] },
+					{ type: 'bezierCurveTo', data: [-5,40,-10,20,-20,0] }
 				];	
 		var unionCanvas, output;
 		var bubblePath = Path(bubble);
@@ -90,14 +88,9 @@
 		  	angle = 0,
 		  	frameCount = 0;
 		
-		function animate(){
-			var nowTime = new Date().getTime();
-			angle = angle + Math.PI/180*100;
-			var rs = stalkPath.rotate(angle) 
-			debugger
-			var path = bubblePath.union(rs ) 
-			frameCount++;
-			output.innerHTML = String( ( nowTime - startTime ) / frameCount ) ;
+		function animate() {
+			var rs = stalkPath.rotate(angle);
+			var path = bubblePath.union(rs);
 			
 			unionCanvas
 			.clear()
@@ -108,15 +101,17 @@
 				lineWidth: 2
 			})
 			.begin()
-			//.plot( bubblePath )
-			//.plot( stalkPath )
-			.plot(path )
-			//.close()
+			.plot( path )
+			.close()
 			.stroke();
 			
+			var nowTime = new Date().getTime();
+			
+      frameCount++;
+			output.innerHTML = String( ( nowTime - startTime ) / frameCount ) ;
+			
 			angle = angle + Math.PI/180;
-			debugger
-			//t = setTimeout(animate, 0);
+			timer = setTimeout(animate, 0);
 		}
 		
 		jQuery(document).ready(function(){
