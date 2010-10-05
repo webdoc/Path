@@ -14,7 +14,6 @@ function pathUnion(path1,path2){
 		this.getOverallPath();
 	}
 	this.path = this.getPathFromPoints(this.path);
-	//debugger
 }
 /*gets the path union (non intersection case)*/
 pathUnion.prototype.getPathsUnion = function(){
@@ -38,7 +37,7 @@ pathUnion.prototype.getPathsUnion = function(){
 
 /*checks if the point is inside the path*/
 pathUnion.prototype.isPointInside = function(p,limits){
-	return (p.x<limits[1].x&&p.x>limits[0].x&&p.y<limits[1].y&&p.y>limits[0].y);
+	return (p.x<=limits[1].x&&p.x>=limits[0].x&&p.y<=limits[1].y&&p.y>=limits[0].y);
 }
 pathUnion.prototype.getPathLimits = function(pi){
 	var minX = Infinity;
@@ -263,8 +262,12 @@ pathUnion.prototype.getStartPoint = function(i,ic,jc){
 		var jc=1;
 	}
 	ic++;
-	var maxP = this.getPathLimits(1-i)[1];
+	
 	var spath = this.bounds[i][ic];
+	var limits = this.getPathLimits(1-i);
+	if(!this.isPointInside(new Point(spath[0],spath[1]),limits))
+		return [i,ic];
+	var maxP = limits[1];
 	var path2 = this.bounds[1-i];
 	var length = 0;
 	for(var k=1;k< path2.length;k++){
@@ -379,7 +382,7 @@ pathUnion.prototype.setBounds = function(){
 	returns the array of:
 		0: the index of the line in path 1
 		1: the index of the line in path 2
-		3: [{x:X,y:Y}, t1,t2]
+		2: [{x:X,y:Y}, t1,t2]
 **/
 pathUnion.prototype.getAllInsersectionPoints = function(){
 	var path1 = this.paths[0];
@@ -526,7 +529,7 @@ pathUnion.prototype.intersectLineLine = function(a1, a2, b1, b2, infinite) {
 		}
 		else if (0 <= ua && ua <= 1 && 0 <= ub && ub <= 1 ) {
         	return new Point(a1.x + ua * (a2.x - a1.x),a1.y + ua * (a2.y - a1.y));
-         }
+        }
 	} 
 	return null;
 };
