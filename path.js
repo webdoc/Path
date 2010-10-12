@@ -31,7 +31,7 @@
 				//z: { type: 'closePath', length: 0 }
 			};
 	
-	// EXTEND Object
+	// EXTEND
 	
 	if (typeof Object.create !== 'function') {
     Object.create = function (o) {
@@ -485,7 +485,6 @@
 	// Path() takes an object that defines a path, or a JSON string
 	// that defines a path, or an SVGDOMNode that defines a path, and
 	// constructs an array-like object with a chainable API.
-	// [TODO] obj detection and construction of path from SVGNode
 	
 	function Path( obj ){
 		var path, l;
