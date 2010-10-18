@@ -69,6 +69,12 @@
 					this.ctx.scale(x, y);
 					return this;
 				},
+				rotate: function(a){
+					this.ctx.save();
+					saveLevel++;
+					this.ctx.rotate(a);
+					return this;
+				},
 				plot: function( path ){
 					var ctx = this.ctx,
 							i = -1,

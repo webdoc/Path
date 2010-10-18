@@ -138,9 +138,9 @@
 			
 			// Check lengths match
 			if (debug) {
-			  if ( this.length !== deformPath.length ) {
-			  	debug && console.log('[Path] trying to addDeformPath, but lengths don\'t match', this.length, deformPath.length);
-			  }
+				if ( this.length !== deformPath.length ) {
+					debug && console.log('[Path] trying to addDeformPath, but lengths don\'t match', this.length, deformPath.length);
+				}
 			}
 			
 			// Loop through path instructions
